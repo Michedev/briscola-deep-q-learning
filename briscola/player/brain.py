@@ -37,10 +37,10 @@ def to_feature(c: Card) -> np.ndarray:
 
 
 def root_brain(state_size):
-    inputs = Input((state_size,))
+    inputs = Input(state_size)
     outputs = inputs
     for i in range(3):
-        outputs = Dense(state_size)(outputs)
+        outputs = Dense(100)(outputs)
         outputs = ReLU()(outputs)
     return tf.keras.Model(inputs, outputs, name='root')
 
@@ -56,13 +56,13 @@ def root_brain(state_size):
 #     return Model(inputs, output, name='brain_discarded')
 
 
-def brain_v1(state_size):
-    inputs = Input((state_size,))
+def brain_v1(state_size: list):
+    inputs = Input(state_size)
     root = root_brain(state_size)
     middle = root(inputs)
     outputs = middle
     for i in range(3):
-        outputs = Dense(state_size)(outputs)
+        outputs = Dense(100)(outputs)
         outputs = ReLU()(outputs)
     outputs = Dense(3, name='q_values')(outputs)
     return Model(inputs, outputs, name='Deep-q-network')
@@ -89,4 +89,4 @@ def brain_v1(state_size):
 #     return Model([inputs_1, inputs_2], [output, exp_reward], name='brain_v2')
 
 
-__all__ = ['brain_v1', 'brain_section_discarded_cards', 'root_brain', 'to_feature']
+__all__ = ['brain_v1', 'root_brain', 'to_feature']

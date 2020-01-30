@@ -203,16 +203,21 @@ class QAgent:
 class SmartPlayer(BasePlayer, QAgent):
 
     def __init__(self):
-        super().__init__()
+        QAgent.__init__(self, [34])
+        BasePlayer.__init__(self)
+
         self.name = "intelligent_player"
         self._reward = 0
 
     def choose_card(self) -> int:
         state = build_state_array(self.get_public_state(), self.hand, self.name)
         if self.step_episode > 0:
-            self.experience_buffer[2][self._i_experience - 1] = self._reward
-            self.experience_buffer[3][self._i_experience - 1] = state
-        return self.decide(state)
+            self.get_reward(state, self._reward)
+        i = self.decide(state)
+        if i >= len(self.hand):
+          i = randint(0, len(self.hand)-1)
+          self._reward = -30
+        return i
 
     def notify_turn_winner(self, points: int):
-        self._reward = 0
+        self._reward += points
