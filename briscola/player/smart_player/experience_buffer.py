@@ -72,7 +72,7 @@ class ExperienceBuffer:
                 print("Error when save experience buffer")
                 print(e)
 
-    def sample(self, batch_size=128):
+    def sample(self, batch_size=64):
         i_batch = torch.randint(0, self.experience_size, [batch_size])
         batch = [buffer[i_batch] for buffer in self.experience_buffer]
         return SARS(*batch)

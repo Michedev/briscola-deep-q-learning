@@ -118,7 +118,7 @@ class RAdam(Optimizer):
 class QAgent:
 
     def __init__(self, input_size, discount_factor=0.9, experience_size=300_000, update_q_fut=1000,
-                 sample_experience=128, update_freq=60, no_update_start=500):
+                 sample_experience=64, update_freq=4, no_update_start=500):
         self.no_update_start = no_update_start
         self.update_freq = update_freq
         self.sample_experience = sample_experience
