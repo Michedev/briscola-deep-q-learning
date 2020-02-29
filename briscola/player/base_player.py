@@ -28,6 +28,9 @@ class BasePlayer(ABC):
             print('hand len: ', len(self.hand), 'i: ', i)
             raise e
 
+    def on_enemy_discard(self, card):
+        pass
+
     def is_empty_hand(self):
         return len(self.hand) == 0
 

@@ -12,6 +12,7 @@ from briscola.card import *
 
 values_points = {1: 11, 2: 0, 3: 10, 4: 0, 5: 0, 6: 0, 7: 0, 8: 2, 9: 3, 10: 4}
 
+
 class GameEngine:
 
     def __init__(self, players, points=None):
@@ -39,7 +40,6 @@ class GameEngine:
                 player.hand.append(self.deck.draw())
             self.__logger.info(f'{player.name} hand: {player.hand}')
 
-
     def play_turn(self):
         self.__logger.info(f'First is {self.players[0].name} - second is {self.players[1].name}')
         if self.turn > 0 and not self.deck.is_empty():
@@ -53,9 +53,13 @@ class GameEngine:
             self.__logger.info(f'{self.players[0].name} draws {c1}')
             self.__logger.info(f'{self.players[1].name} draws {c2}')
         self.turn += 1
-        for player in self.players:
+        for i, player in enumerate(self.players):
             c = player.discard_card()
             self.table.append(c)
+            if i == 0:
+                self.players[1].on_enemy_discard(c)
+            else:
+                self.players[0].on_enemy_discard(c)
         self.__logger.info(f'Table: {self.table}')
         i_winner = select_winner(self.table, self.briscola)
         self.__logger.info(f'Turn Winner is {self.players[i_winner].name}')
@@ -70,7 +74,6 @@ class GameEngine:
         self.table = []
         self.__logger.info(f'Winner gained {gained_points} points')
         self.__logger.info(f'Current table points: {self.points}')
-
 
     def is_finish(self):
         return any(p > 60 for p in self.points) or \

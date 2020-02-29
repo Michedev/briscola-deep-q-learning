@@ -1,6 +1,6 @@
 from game import GameEngine
 from random_player import RandomPlayer
-from smart_player import IntelligentPlayer
+from smart_player import SmartPlayer
 import tensorflow as tf
 from path import Path
 
@@ -10,7 +10,7 @@ MODEL_PATH = ROOT.parent / 'brain.h5'
 def play_smart_vs_random(n=None):
     if n is None:
         n = 1
-    p1 = IntelligentPlayer()
+    p1 = SmartPlayer()
     if MODEL_PATH.exists():
         p1.brain.load_weights(MODEL_PATH)
     p2 = RandomPlayer()
