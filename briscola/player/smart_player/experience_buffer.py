@@ -2,13 +2,15 @@ from collections import namedtuple
 from typing import Union, Tuple, List
 
 import torch
-
+from path import Path
 from card import Deck
 
 SARS = namedtuple('SARS', ['s_t', 'd_t', 'a_t', 'r_t', 's_t1', 'd_t1', 'r_t1', 'r_t2'])
 
 
 class ExperienceBuffer:
+
+    BUFFERPATH = Path(__file__).parent / 'experience.pth'
 
     def __init__(self, state_size: Union[Tuple, List], experience_size):
         self.state_size = state_size
@@ -64,6 +66,11 @@ class ExperienceBuffer:
         self.experience_size = max(self.experience_size, self.i_experience)
         if self.i_experience == self.experience_max_size:
             self.i_experience = 0
+            try:
+                torch.save(self.experience_buffer, self.BUFFERPATH)
+            except Exception as e:
+                print("Error when save experience buffer")
+                print(e)
 
     def sample(self, batch_size=128):
         i_batch = torch.randint(0, self.experience_size, [batch_size])

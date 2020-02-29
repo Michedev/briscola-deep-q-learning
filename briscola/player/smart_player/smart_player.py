@@ -117,18 +117,8 @@ class RAdam(Optimizer):
 
 class QAgent:
 
-    def __init__(self, input_size, discount_factor=0.8, experience_size=300_000, update_q_fut=1000,
+    def __init__(self, input_size, discount_factor=0.9, experience_size=300_000, update_q_fut=1000,
                  sample_experience=128, update_freq=60, no_update_start=500):
-        '''
-
-        :param input_size:
-        :param discount_factor:
-        :param experience_size:
-        :param update_q_fut:
-        :param sample_experience: sample size drawn from the buffer
-        :param update_freq: number of steps for a model update
-        :param no_update_start: number of initial steps which the model doesn't update
-        '''
         self.no_update_start = no_update_start
         self.update_freq = update_freq
         self.sample_experience = sample_experience
@@ -217,10 +207,11 @@ class QAgent:
             self.writer.add_histogram(lname.replace('.', '/'), lvalues, self.step)
 
     def reset(self):
+        torch.save(self.brain.state_dict(), BRAINFILE)
         self.epsilon = max(1.0 - 0.004 * self.episode, 0.1)
         self.step_episode = 0
 
-    def on_finish(self, winner):
+    def on_finish(self):
         self.writer.add_scalar('steps per episode', self.step_episode, self.episode)
         self.episode += 1
 
@@ -278,7 +269,6 @@ class SmartPlayer(BasePlayer, QAgent):
             self.get_reward(self.last_state, -1.0)
         self.counter += 1
         self._init_game_vars()
-
 
     def on_enemy_discard(self, card):
         self.id_enemy_discard = card.id
