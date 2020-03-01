@@ -1,14 +1,13 @@
 from random import randint, random
 
-import gc
 from torch.utils.tensorboard import SummaryWriter
 
 from base_player import BasePlayer
 from brain import Brain
+from callbacks import Callbacks, TrainStep, TargetNetworkUpdate, QValuesLog, WeightsLog
 from feature_encoding import build_state_array, build_discarded_remaining_array
-from experience_buffer import ExperienceBuffer, SARS
+from experience_buffer import ExperienceBuffer
 
-values_points = {1: 11, 2: 0, 3: 10, 4: 0, 5: 0, 6: 0, 7: 0, 8: 2, 9: 3, 10: 4}
 GLOBAL_COUNTER = 0
 from path import Path
 
@@ -129,7 +128,7 @@ class QAgent:
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.brain = Brain(input_size)  # throw first, second, third card
         if BRAINFILE.exists():
-            self.brain.load_state_dict(BRAINFILE)
+            self.brain.load_state_dict(torch.load(BRAINFILE))
         self.target_network = Brain(input_size)
         self.opt = RAdam(self.brain.parameters())
         self.step = 1
@@ -142,24 +141,43 @@ class QAgent:
         self.same_counter = 0
         self.destination_position = None
         self.experience_buffer = ExperienceBuffer(input_size, experience_size)
+        self.decide_callbacks = Callbacks(
+            TrainStep(self.opt, self.experience_buffer, self.target_network, self.brain,
+                      self.update_freq, self.no_update_start, self.discount_factor, self._device,
+                      self.sample_experience),
+            TargetNetworkUpdate(self.brain, self.target_network, self.update_q_fut),
+            WeightsLog(self.brain, self.writer, every=1000),
+        )
+        self.q_values_log = QValuesLog(self.writer)
+        self.brain.to(self._device)
+        self.target_network.to(self._device)
 
     def decide(self, state):
-        self.__triggers_decide()
-        state, discarded, hand_ids = state
-        state = torch.from_numpy(state).to(self._device)
-        extra = build_discarded_remaining_array(discarded, hand_ids).unsqueeze(0)
+        self.decide_callbacks(self.step)
+        table, discarded, hand_ids = state
+        table = torch.from_numpy(table).to(self._device).float().unsqueeze(0)
+        extra = build_discarded_remaining_array(discarded, hand_ids).to(self._device).unsqueeze(0)
         self.experience_buffer.put_d_t(extra)
+        self.brain.eval()
         if self.epsilon > random():
             i = randint(0, len(hand_ids))
         else:
-            q_values = self.brain(state, discarded).item()
-            i = torch.argmax(q_values)
+            q_values = self.brain(table, extra).squeeze(0)
+            i = torch.argmax(q_values).item()
+            self.q_values_log(self.step, q_values)
         return i
 
     def get_reward(self, next_state, reward):
-        next_state, next_discarded, next_hand_ids = next_state
-        next_state = torch.from_numpy(next_state)
+        table, next_discarded, next_hand_ids = next_state
+        table = torch.from_numpy(table).float()
         extra = build_discarded_remaining_array(next_discarded, next_hand_ids)
+        self._store_reward(extra, table, reward)
+        self.writer.add_scalar('true reward', reward, self.step)
+        self.step += 1
+        self.step_episode += 1
+        self.experience_buffer.increase_i()
+
+    def _store_reward(self, extra, next_state, reward):
         self.experience_buffer.put_r_t(reward)
         self.experience_buffer.put_s_t1(next_state)
         self.experience_buffer.put_d_t1(extra)
@@ -175,57 +193,13 @@ class QAgent:
                     self.experience_buffer.get_r_t(decrease=2) != 1.0:
                 self.experience_buffer.put_s_t1(next_state, decrease=2)
                 self.experience_buffer.put_d_t1(extra, decrease=2)
-        self.writer.add_scalar('true reward', reward, self.step)
-        self.step += 1
-        self.step_episode += 1
-        self.experience_buffer.increase_i()
-
-    def _train_step(self, sars, discount_factor):
-        self.opt.zero_grad()
-        self._put_into_device(sars)
-        exp_rew_t = self.brain(sars.s_t, sars.d_t)
-        exp_rew_t = exp_rew_t[:, sars.a_t.long()]
-        is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
-        is_finished_episode = is_finished_episode.float().unsqueeze(-1)
-        exp_rew_t3 = is_finished_episode * self.target_network(sars.s_t1, sars.d_t1)
-        exp_rew_t3 = torch.max(exp_rew_t3, dim=1)
-        if isinstance(exp_rew_t3, tuple):
-            exp_rew_t3 = exp_rew_t3[0]
-        y = sars.r_t + discount_factor * sars.r_t1 + \
-            discount_factor ** 2 * sars.r_t2 + \
-            discount_factor ** 3 * exp_rew_t3
-        qloss = self.mse(y, exp_rew_t)
-        del sars
-        qloss = torch.mean(qloss)
-        qloss.backward()
-        gc.collect()
-        self.opt.step()
-        return qloss
-
-    def _save_nn(self):
-        for lname, lvalues in self.brain.state_dict().items():
-            self.writer.add_histogram(lname.replace('.', '/'), lvalues, self.step)
 
     def reset(self):
         torch.save(self.brain.state_dict(), BRAINFILE)
         self.epsilon = max(1.0 - 0.004 * self.episode, 0.1)
-        self.step_episode = 0
-
-    def on_finish(self):
         self.writer.add_scalar('steps per episode', self.step_episode, self.episode)
         self.episode += 1
-
-    def _put_into_device(self, sars):
-        result = SARS(*[v.to(self._device) for v in sars])
-        return result
-
-    def __triggers_decide(self):
-        if self.step % self.update_freq == 0 and self.step > self.no_update_start:
-            sample = self.experience_buffer.sample(128)
-            self._train_step(sample, self.discount_factor)
-        if self.step % 1000 == 0 and self.step > 0:
-            gc.collect()
-            self.target_network.load_state_dict(self.brain.state_dict())
+        self.step_episode = 0
 
 
 class SmartPlayer(BasePlayer, QAgent):
@@ -235,12 +209,13 @@ class SmartPlayer(BasePlayer, QAgent):
         BasePlayer.__init__(self)
 
         self.name = "intelligent_player"
-        self.counter_wins = 0
+        self.counter_wins_10 = 0
         self.counter = 0
         self._init_game_vars()
 
     def _init_game_vars(self):
         self._reward = 0
+        self._out_of_hand = False
         self.last_winner = True
         self.id_enemy_discard = -1
         self.my_card_discarded = []
@@ -252,11 +227,11 @@ class SmartPlayer(BasePlayer, QAgent):
         state = build_state_array(self.get_public_state(), self.hand, self.name)
         self.last_state = [state, self.my_card_discarded + self.enemy_discarded, [c.id for c in self.hand]]
         if self.step_episode > 0:
-            self.get_reward(self.last_state, self._reward)
+            self.get_reward(self.last_state, self._out_of_hand)
         i = self.decide(self.last_state)
         if i >= len(self.hand):
             i = randint(0, len(self.hand) - 1)
-            self._reward = -0.7
+            self._out_of_hand = True
         self.id_self_discard = self.hand[i].id
         return i
 
@@ -264,7 +239,7 @@ class SmartPlayer(BasePlayer, QAgent):
         self.reset()
         if name == self.name:
             self.get_reward(self.last_state, 1.0)
-            self.counter_wins += 1
+            self.counter_wins_10 += 1
         else:
             self.get_reward(self.last_state, -1.0)
         self.counter += 1
@@ -275,6 +250,9 @@ class SmartPlayer(BasePlayer, QAgent):
 
     def notify_turn_winner(self, points: int):
         self._reward = points / 22.0 / 2.0  # [-0.5, 0.5]
+        if self._out_of_hand:
+            self._reward = -0.7
+            self._out_of_hand = False
         if points > 0:
             self._on_my_win()
         elif points < 0:

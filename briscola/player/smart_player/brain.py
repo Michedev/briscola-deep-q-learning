@@ -6,7 +6,8 @@ from card import Deck
 values_points = {1: 11, 2: 0, 3: 10, 4: 0, 5: 0, 6: 0, 7: 0, 8: 2, 9: 3, 10: 4}
 cards = Deck.all_cards()
 card_features = [encode_card(None)] + [encode_card(c) for c in cards]
-card_features = torch.FloatTensor(card_features)
+card_features = torch.cuda.FloatTensor(card_features) if torch.cuda.is_available() else torch.FloatTensor(card_features)
+
 
 class DiscardedModule(Module):
 
@@ -54,9 +55,9 @@ class Brain(Module):
         self.discarded_nn = DiscardedModule()
         self.remaining_nn = DiscardedModule()
 
-    def forward(self, state, others):
+    def forward(self, state: torch.Tensor, others):
         i_seps = others[:, 0]
-        mask_remaining = i_seps < torch.arange(41).unsqueeze(1)
+        mask_remaining = i_seps < torch.arange(41).to(state.device).unsqueeze(1)
         mask_remaining.t_()
         mask_discarded = ~mask_remaining
         discarded = others * mask_discarded.float()
