@@ -4,7 +4,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from base_player import BasePlayer
 from brain import Brain
-from callbacks import Callbacks, TrainStep, TargetNetworkUpdate, QValuesLog, WeightsLog
+from callbacks import Callbacks, TrainStep, TargetNetworkUpdate, QValuesLog, WeightsLog, WinRateLog
 from feature_encoding import build_state_array, build_discarded_remaining_array
 from experience_buffer import ExperienceBuffer
 
@@ -209,9 +209,10 @@ class SmartPlayer(BasePlayer, QAgent):
         BasePlayer.__init__(self)
 
         self.name = "intelligent_player"
-        self.counter_wins_10 = 0
         self.counter = 0
         self._init_game_vars()
+        self.win_loggers = Callbacks(WinRateLog(self.writer, every=10),
+                                     WinRateLog(self.writer, every=100))
 
     def _init_game_vars(self):
         self._reward = 0
@@ -239,10 +240,12 @@ class SmartPlayer(BasePlayer, QAgent):
         self.reset()
         if name == self.name:
             self.get_reward(self.last_state, 1.0)
-            self.counter_wins_10 += 1
+            for win_logger in self.win_loggers.callbacks:
+                win_logger.notify_win()
         else:
             self.get_reward(self.last_state, -1.0)
         self.counter += 1
+        self.win_loggers(self.counter)
         self._init_game_vars()
 
     def on_enemy_discard(self, card):

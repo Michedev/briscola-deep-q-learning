@@ -19,7 +19,7 @@ class Callback(ABC):
         pass
 
 
-class WinRate(Callback):
+class WinRateLog(Callback):
 
     def __init__(self, logger, every=None):
         self.every = every or 10
@@ -31,8 +31,12 @@ class WinRate(Callback):
         self.wins += 1
 
     def call(self, iteration, extra: list):
-        self.logger.add_scalar('match/win_rate_10', iteration / 10, iteration // 10)
-        self.logger.add_scalar('match/lose_rate_10', 1 - iteration / 10, iteration // 10)
+        self.logger.add_scalar(f'match/win_rate_{self.every}',
+                               iteration / self.every,
+                               iteration // self.every)
+        self.logger.add_scalar(f'match/lose_rate_{self.every}',
+                               1 - iteration / self.every,
+                               iteration // self.every)
         self.wins = 0
 
 

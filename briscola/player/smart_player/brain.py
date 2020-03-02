@@ -24,9 +24,9 @@ class DiscardedModule(Module):
         """
         discarded = card_features[discarded.long()]
         discarded = discarded.permute(0, 2, 1)
-        output = self.tc1(discarded).mean(dim=1)
-        output += self.tc2(discarded).mean(dim=1)
-        output += self.tc4(discarded).mean(dim=1)
+        output = self.tc1(discarded).mean(dim=-1)
+        output += self.tc2(discarded).mean(dim=-1)
+        output += self.tc4(discarded).mean(dim=-1)
         return output
 
     def temporal_conv(self, dilation, ):
