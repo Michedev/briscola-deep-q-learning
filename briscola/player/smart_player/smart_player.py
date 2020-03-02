@@ -4,7 +4,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from base_player import BasePlayer
 from brain import Brain
-from callbacks import Callbacks, TrainStep, TargetNetworkUpdate, QValuesLog, WeightsLog, WinRateLog
+from callbacks import Callbacks, TrainStep, TargetNetworkUpdate, QValuesLog, WeightsLog, WinRateLog, \
+    IncreaseEpsilonOnLose
 from feature_encoding import build_state_array, build_discarded_remaining_array
 from experience_buffer import ExperienceBuffer
 
@@ -101,7 +102,7 @@ class QAgent:
 
     def reset(self):
         torch.save(self.brain.state_dict(), BRAINFILE)
-        self.epsilon = max(1.0 - 0.004 * self.episode, 0.1)
+        self.epsilon = max(self.epsilon - 0.001, 0.1)
         self.writer.add_scalar('steps per episode', self.step_episode, self.episode)
         self.episode += 1
         self.step_episode = 0
@@ -116,8 +117,9 @@ class SmartPlayer(BasePlayer, QAgent):
         self.name = "intelligent_player"
         self.counter = 0
         self._init_game_vars()
-        self.win_loggers = Callbacks(WinRateLog(self.writer, every=10),
-                                     WinRateLog(self.writer, every=100))
+        self.matchs_callbacks = Callbacks(WinRateLog(self.writer, every=10),
+                                          WinRateLog(self.writer, every=100),
+                                          IncreaseEpsilonOnLose(self, every=10, increase_perc=0.45))
 
     def _init_game_vars(self):
         self._reward = 0
@@ -145,12 +147,12 @@ class SmartPlayer(BasePlayer, QAgent):
         self.reset()
         if name == self.name:
             self.get_reward(self.last_state, 1.0)
-            for win_logger in self.win_loggers.callbacks:
+            for win_logger in self.matchs_callbacks.callbacks:
                 win_logger.notify_win()
         else:
             self.get_reward(self.last_state, -1.0)
         self.counter += 1
-        self.win_loggers(self.counter)
+        self.matchs_callbacks(self.counter)
         self.writer.add_scalar('epsilon', self.epsilon, self.counter)
         self._init_game_vars()
 

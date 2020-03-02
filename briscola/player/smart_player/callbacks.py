@@ -30,13 +30,39 @@ class WinRateLog(Callback):
     def notify_win(self):
         self.wins += 1
 
+    @property
+    def win_rate(self):
+        return self.wins / self.every
+
     def call(self, iteration, extra: list):
         self.logger.add_scalar(f'match/win_rate_{self.every}',
-                               self.wins / self.every,
+                               self.win_rate,
                                iteration // self.every)
         self.logger.add_scalar(f'match/lose_rate_{self.every}',
-                               1 - self.wins / self.every,
+                               1 - self.win_rate,
                                iteration // self.every)
+        self.wins = 0
+
+
+class IncreaseEpsilonOnLose(Callback):
+
+    def __init__(self, player: {'epsilon'}, every=10, increase_perc=0.4, start_epsilon_increase=0.5):
+        super().__init__(every, no_update_start=100)
+        self.start_epsilon_increase = start_epsilon_increase
+        self.player = player
+        self.wins = 0
+        self.increase_perc = increase_perc
+
+    def notify_win(self):
+        self.wins += 1
+
+    @property
+    def win_rate(self):
+        return self.wins / self.every
+
+    def call(self, iteration, extra: list):
+        if self.player.epsilon < self.start_epsilon_increase:
+            self.player.epsilon += 1 - self.win_rate * self.increase_perc
         self.wins = 0
 
 
@@ -68,7 +94,7 @@ class TrainStep(Callback):
         self.opt.zero_grad()
         sars = self.put_into_device(sars)
         exp_rew_t = self.brain(sars.s_t, sars.d_t)
-        exp_rew_t = exp_rew_t[:, sars.a_t.long()]
+        exp_rew_t = exp_rew_t[:, sars.a_t.long()][:, 0]
         is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
         is_finished_episode = is_finished_episode.float().unsqueeze(-1)
         exp_rew_t3 = is_finished_episode * self.target_network(sars.s_t1, sars.d_t1)
@@ -80,12 +106,11 @@ class TrainStep(Callback):
             self.discount_factor ** 3 * exp_rew_t3
         qloss = self.mse(y, exp_rew_t)
         del sars
-        qloss = torch.mean(qloss)
         if self.logger:
             self.logger.add_scalar('q loss', qloss, iteration)
         qloss.backward()
-        gc.collect()
         self.opt.step()
+        gc.collect()
         return qloss
 
 
@@ -126,6 +151,9 @@ class Callbacks:
     def __call__(self, iteration):
         for callback in self.callbacks:
             callback(iteration)
+
+    def __getitem__(self, item):
+        return self.callbacks[item]
 
 
 class WeightsLog(Callback):
