@@ -46,8 +46,8 @@ def encode_card(c: Card) -> np.ndarray:
     if c is None:
         return np.zeros((6,))
     ohe_seed = Seed.ohe_repr(c.seed)
-    points_card = values_points[c.value]
-    value_card = c.value
+    points_card = values_points[c.value] / 11.0
+    value_card = c.value / 10.0
     features = np.array([value_card, points_card])
     return np.concatenate([features, ohe_seed])
 

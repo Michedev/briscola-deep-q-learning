@@ -32,7 +32,7 @@ class DiscardedModule(Module):
     def temporal_conv(self, dilation, ):
         return Sequential(
             Conv1d(6, 64, kernel_size=2, dilation=dilation),
-            BatchNorm1d(64),
+            #BatchNorm1d(64),
             ReLU()
         )
 
@@ -43,12 +43,12 @@ class Brain(Module):
         super(Brain, self).__init__()
         self.l1 = Sequential(
             Linear(state_size[-1], 64),
-            BatchNorm1d(64),
+            #BatchNorm1d(64),
             ReLU(),
         )
         self.q_est = Sequential(
             Linear(64, 30),
-            BatchNorm1d(30),
+            #BatchNorm1d(30),
             ReLU(),
             Linear(30, 3)
         )
