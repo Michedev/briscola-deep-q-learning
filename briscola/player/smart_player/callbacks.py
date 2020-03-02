@@ -32,10 +32,10 @@ class WinRateLog(Callback):
 
     def call(self, iteration, extra: list):
         self.logger.add_scalar(f'match/win_rate_{self.every}',
-                               iteration / self.every,
+                               self.wins / self.every,
                                iteration // self.every)
         self.logger.add_scalar(f'match/lose_rate_{self.every}',
-                               1 - iteration / self.every,
+                               1 - self.wins / self.every,
                                iteration // self.every)
         self.wins = 0
 
@@ -44,7 +44,8 @@ class TrainStep(Callback):
 
     def __init__(self, opt, buffer, target_network, brain, every,
                  no_update_start, discount_factor,
-                 device, batch_size):
+                 device, batch_size, logger=None):
+        self.logger = logger
         self.batch_size = batch_size
         self.discount_factor = discount_factor
         self.buffer = buffer
@@ -80,6 +81,8 @@ class TrainStep(Callback):
         qloss = self.mse(y, exp_rew_t)
         del sars
         qloss = torch.mean(qloss)
+        if self.logger:
+            self.logger.add_scalar('q loss', qloss, iteration)
         qloss.backward()
         gc.collect()
         self.opt.step()
@@ -105,13 +108,14 @@ class QValuesLog(Callback):
         self.logger = logger
 
     def call(self, iteration, extra: list):
-        q_values = extra[0]
+        q_values, action = extra
         self.logger.add_scalars('q_values',
                                 {'first': q_values[0], 'second': q_values[1], 'third': q_values[2]},
                                 iteration)
         self.logger.add_scalar('q_values/first', q_values[0], iteration)
         self.logger.add_scalar('q_values/second', q_values[1], iteration)
         self.logger.add_scalar('q_values/third', q_values[2], iteration)
+        self.logger.add_scalar('q_values/action', action, iteration)
 
 
 class Callbacks:
