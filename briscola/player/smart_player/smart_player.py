@@ -17,7 +17,7 @@ BRAINFILE = FOLDER / 'brain.pth'
 
 import math
 import torch
-from torch.optim.adamw import AdamW
+from torch.optim import Adam
 
 
 class QAgent:
@@ -36,7 +36,7 @@ class QAgent:
         if BRAINFILE.exists():
             self.brain.load_state_dict(torch.load(BRAINFILE))
         self.target_network = Brain(input_size)
-        self.opt = AdamW(self.brain.parameters(), weight_decay=10e-6)
+        self.opt = Adam(self.brain.parameters(), eps=10-3)
         self.step = 1
         self.episode = 0
         self.step_episode = 0
@@ -52,7 +52,7 @@ class QAgent:
                       self.update_freq, self.no_update_start, self.discount_factor, self._device,
                       self.sample_experience, self.writer),
             TargetNetworkUpdate(self.brain, self.target_network, self.update_q_fut),
-            WeightsLog(self.brain, self.writer, every=1000),
+            WeightsLog(self.brain, self.writer, every=1000, gradient=True),
         )
         self.q_values_log = QValuesLog(self.writer)
         self.brain.to(self._device)
@@ -117,9 +117,9 @@ class SmartPlayer(BasePlayer, QAgent):
         self.name = "intelligent_player"
         self.counter = 0
         self._init_game_vars()
-        self.matchs_callbacks = Callbacks(WinRateLog(self.writer, every=10),
-                                          WinRateLog(self.writer, every=100),
-                                          IncreaseEpsilonOnLose(self, every=10, increase_perc=0.45))
+        self.matches_callbacks = Callbacks(WinRateLog(self.writer, every=10),
+                                           WinRateLog(self.writer, every=100),
+                                           IncreaseEpsilonOnLose(self, every=20, increase_perc=0.3))
 
     def _init_game_vars(self):
         self._reward = 0
@@ -147,12 +147,12 @@ class SmartPlayer(BasePlayer, QAgent):
         self.reset()
         if name == self.name:
             self.get_reward(self.last_state, 1.0)
-            for win_logger in self.matchs_callbacks.callbacks:
+            for win_logger in self.matches_callbacks.callbacks:
                 win_logger.notify_win()
         else:
             self.get_reward(self.last_state, -1.0)
         self.counter += 1
-        self.matchs_callbacks(self.counter)
+        self.matches_callbacks(self.counter)
         self.writer.add_scalar('epsilon', self.epsilon, self.counter)
         self._init_game_vars()
 

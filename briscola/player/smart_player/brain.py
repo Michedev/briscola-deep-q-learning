@@ -36,6 +36,15 @@ class DiscardedModule(Module):
             ReLU()
         )
 
+def EnemyNextCard(input_size):
+    return Sequential(
+            Linear(input_size, input_size),
+            BatchNorm1d(input_size),
+            ReLU(),
+            Linear(input_size, 40),
+            LogSoftmax()
+        )
+
 
 class Brain(Module):
 
@@ -43,19 +52,20 @@ class Brain(Module):
         super(Brain, self).__init__()
         self.l1 = Sequential(
             Linear(state_size[-1], 64),
-            #BatchNorm1d(64),
+            BatchNorm1d(64),
             ReLU(),
         )
         self.q_est = Sequential(
             Linear(64, 30),
-            #BatchNorm1d(30),
+            BatchNorm1d(30),
             ReLU(),
             Linear(30, 3)
         )
         self.discarded_nn = DiscardedModule()
         self.remaining_nn = DiscardedModule()
+        self.enemy_predict = EnemyNextCard(64)
 
-    def forward(self, state: torch.Tensor, others):
+    def forward(self, state: torch.Tensor, others, predict_enemy=False):
         i_seps = others[:, 0]
         mask_remaining = i_seps < torch.arange(41).to(state.device).unsqueeze(1)
         mask_remaining.t_()
@@ -65,7 +75,11 @@ class Brain(Module):
         output = self.l1(state)
         output += self.discarded_nn(discarded)
         output += self.remaining_nn(remaining)
+        if predict_enemy:
+            p_next_enemy_card = self.enemy_predict(output)
         output = self.q_est(output)
+        if predict_enemy:
+            return output, p_next_enemy_card
         return output
 
 

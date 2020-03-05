@@ -2,7 +2,7 @@ from base_player import BasePlayer
 from random import randint
 
 
-class RandomPlayer(BasePlayer):
+class PseudoRandomPlayer(BasePlayer):
 
     def __init__(self):
         super().__init__()

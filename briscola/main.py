@@ -1,5 +1,5 @@
 from game import GameEngine
-from random_player import RandomPlayer
+from random_player import PseudoRandomPlayer
 from smart_player import SmartPlayer
 import tensorflow as tf
 from path import Path
@@ -13,7 +13,7 @@ def play_smart_vs_random(n=None):
     p1 = SmartPlayer()
     if MODEL_PATH.exists():
         p1.brain.load_weights(MODEL_PATH)
-    p2 = RandomPlayer()
+    p2 = PseudoRandomPlayer()
     wins_p1 = 0
     for i in range(n):
         game = GameEngine([p1, p2], [0,0])

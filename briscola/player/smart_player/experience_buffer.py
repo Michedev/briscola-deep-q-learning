@@ -5,7 +5,7 @@ import torch
 from path import Path
 from card import Deck
 
-SARS = namedtuple('SARS', ['s_t', 'd_t', 'a_t', 'r_t', 's_t1', 'd_t1', 'r_t1', 'r_t2'])
+SARS = namedtuple('SARS', ['s_t', 'd_t', 'a_t', 'r_t', 's_t1', 'd_t1', 'r_t1', 'r_t2', 'enemy_card'])
 
 
 class ExperienceBuffer:
@@ -25,7 +25,8 @@ class ExperienceBuffer:
             torch.zeros(experience_size, *self.state_size, dtype=torch.float32, device='cpu'),  # s_t1
             torch.zeros(experience_size, 41, dtype=torch.float32, device='cpu'),  # discarded/remaining cards at time t1
             torch.zeros(experience_size, dtype=torch.float32, device='cpu'),  # reward_t1
-            torch.zeros(experience_size, dtype=torch.float32, device='cpu')  # reward_t2
+            torch.zeros(experience_size, dtype=torch.float32, device='cpu'),  # reward_t2
+            torch.zeros(experience_size, dtype=torch.uint8, device='cpu')   #enemy card
         ]
 
     def put_s_t(self, value):
@@ -60,6 +61,14 @@ class ExperienceBuffer:
 
     def get_r_t2(self, decrease=0):
         return self.experience_buffer[7][self.i_experience - decrease]
+
+    def put_next_enemy_card_id(self, value):
+        self.experience_buffer[7][self.i_experience-1] = value
+
+    def get_next_enemy_card_id(self, value):
+        self.experience_buffer[7][self.i_experience-1] = value
+
+
 
     def increase_i(self):
         self.i_experience += 1
