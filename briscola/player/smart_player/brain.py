@@ -32,18 +32,19 @@ class DiscardedModule(Module):
     def temporal_conv(self, dilation, ):
         return Sequential(
             Conv1d(6, 64, kernel_size=2, dilation=dilation),
-            #BatchNorm1d(64),
+            # BatchNorm1d(64),
             ReLU()
         )
 
+
 def EnemyNextCard(input_size):
     return Sequential(
-            Linear(input_size, input_size),
-            BatchNorm1d(input_size),
-            ReLU(),
-            Linear(input_size, 40),
-            LogSoftmax()
-        )
+        Linear(input_size, input_size),
+        BatchNorm1d(input_size),
+        ReLU(),
+        Linear(input_size, 40),
+        LogSoftmax()
+    )
 
 
 class Brain(Module):

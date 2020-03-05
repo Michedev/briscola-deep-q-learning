@@ -62,7 +62,7 @@ class IncreaseEpsilonOnLose(Callback):
 
     def call(self, iteration, extra: list):
         if self.player.epsilon < self.start_epsilon_increase:
-            self.player.epsilon += 1 - self.win_rate * self.increase_perc
+            self.player.epsilon += (1 - self.win_rate) * self.increase_perc
         self.wins = 0
 
 
@@ -94,7 +94,7 @@ class TrainStep(Callback):
         self.opt.zero_grad()
         sars = self.put_into_device(sars)
         exp_rew_t, predict = self.brain(sars.s_t, sars.d_t, predict_enemy=True)
-        exp_rew_t = torch.FloatTensor([exp_rew_t[i, at_i] for i, at_i in enumerate(sars.a_t.long())])
+        exp_rew_t = exp_rew_t.gather(1, sars.a_t.long().unsqueeze(-1))
         is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
         is_finished_episode = is_finished_episode.float().unsqueeze(-1)
         exp_rew_t3 = is_finished_episode * self.target_network(sars.s_t1, sars.d_t1)
@@ -105,9 +105,9 @@ class TrainStep(Callback):
             self.discount_factor ** 2 * sars.r_t2 + \
             self.discount_factor ** 3 * exp_rew_t3
         qloss = self.mse(y, exp_rew_t)
-        error_predict = torch.FloatTensor([predict[i, sars.enemy_card[i]] for i in range(predict.shape[0])])
-        tot_loss = qloss = error_predict
-        del sars
+        error_predict = predict.gather(1, sars.enemy_card.long().unsqueeze(-1)) #torch.FloatTensor([predict[i, sars.enemy_card[i].item()] for i in range(predict.shape[0])]).to(self.device)
+        error_predict = - error_predict.mean(dim=0)
+        tot_loss = qloss + error_predict
         if self.logger:
             self.logger.add_scalar('loss/q loss', qloss, iteration)
             self.logger.add_scalar('loss/predict_loss', error_predict, iteration)
@@ -174,5 +174,3 @@ class WeightsLog(Callback):
         for modname, params in self.brain.state_dict().items():
             path_module = modname.replace('.', '/')
             self.logger.add_histogram(path_module, params, iteration)
-            if self.gradient:
-                self.logger.add_histogram(path_module+'_gradient', params.grad, iteration)

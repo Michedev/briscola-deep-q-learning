@@ -33,10 +33,15 @@ class QAgent:
         self.input_size = list(input_size)
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.brain = Brain(input_size)  # throw first, second, third card
-        if BRAINFILE.exists():
-            self.brain.load_state_dict(torch.load(BRAINFILE))
         self.target_network = Brain(input_size)
-        self.opt = Adam(self.brain.parameters(), eps=10-3)
+        if BRAINFILE.exists():
+            weights = torch.load(BRAINFILE)
+            self.brain.load_state_dict(weights)
+            self.target_network.load_state_dict(weights)
+            del weights
+        self.brain.to(self._device)
+        self.target_network.to(self._device)
+        self.opt = Adam(self.brain.parameters(), eps=0.0003)
         self.step = 1
         self.episode = 0
         self.step_episode = 0
@@ -55,14 +60,13 @@ class QAgent:
             WeightsLog(self.brain, self.writer, every=1000, gradient=True),
         )
         self.q_values_log = QValuesLog(self.writer)
-        self.brain.to(self._device)
-        self.target_network.to(self._device)
 
     def decide(self, state):
         self.decide_callbacks(self.step)
         table, discarded, hand_ids = state
         table = torch.from_numpy(table).to(self._device).float().unsqueeze(0)
         extra = build_discarded_remaining_array(discarded, hand_ids).to(self._device).unsqueeze(0)
+        self.experience_buffer.put_s_t(table)
         self.experience_buffer.put_d_t(extra)
         self.brain.eval()
         if self.epsilon > random():
@@ -158,6 +162,8 @@ class SmartPlayer(BasePlayer, QAgent):
 
     def on_enemy_discard(self, card):
         self.id_enemy_discard = card.id
+        if self.step > 0:
+            self.experience_buffer.put_next_enemy_card_id(card.id)
 
     def notify_turn_winner(self, points: int):
         self._reward = points / 22.0 / 2.0  # [-0.5, 0.5]
