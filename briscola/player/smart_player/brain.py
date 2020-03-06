@@ -11,8 +11,9 @@ card_features = torch.cuda.FloatTensor(card_features) if torch.cuda.is_available
 
 class DiscardedModule(Module):
 
-    def __init__(self):
+    def __init__(self, num_patterns=64):
         super(DiscardedModule, self).__init__()
+        self.num_patterns = num_patterns
         self.tc1 = self.temporal_conv(1)
         self.tc2 = self.temporal_conv(2)
         self.tc4 = self.temporal_conv(4)
@@ -31,7 +32,7 @@ class DiscardedModule(Module):
 
     def temporal_conv(self, dilation, ):
         return Sequential(
-            Conv1d(6, 64, kernel_size=2, dilation=dilation),
+            Conv1d(6, self.num_patterns, kernel_size=2, dilation=dilation),
             # BatchNorm1d(64),
             ReLU()
         )
@@ -51,20 +52,29 @@ class Brain(Module):
 
     def __init__(self, state_size: list):
         super(Brain, self).__init__()
+        self.middle_size = 256
         self.l1 = Sequential(
-            Linear(state_size[-1], 64),
-            BatchNorm1d(64),
+            Linear(state_size[-1], self.middle_size),
+            BatchNorm1d(self.middle_size),
+            ReLU(),
+            Linear(self.middle_size, self.middle_size),
+            BatchNorm1d(self.middle_size),
             ReLU(),
         )
-        self.q_est = Sequential(
-            Linear(64, 30),
+        self.advantange_nn = Sequential(
+            Linear(self.middle_size, 30),
             BatchNorm1d(30),
             ReLU(),
             Linear(30, 3)
         )
-        self.discarded_nn = DiscardedModule()
-        self.remaining_nn = DiscardedModule()
-        self.enemy_predict = EnemyNextCard(64)
+        self.state_nn = Sequential(Linear(self.middle_size, 30),
+                                   BatchNorm1d(30),
+                                   ReLU(),
+                                   Linear(30, 1))
+
+        self.discarded_nn = DiscardedModule(self.middle_size)
+        self.remaining_nn = DiscardedModule(self.middle_size)
+        self.enemy_predict = EnemyNextCard(self.middle_size)
 
     def forward(self, state: torch.Tensor, others, predict_enemy=False):
         i_seps = others[:, 0]
@@ -78,7 +88,10 @@ class Brain(Module):
         output += self.remaining_nn(remaining)
         if predict_enemy:
             p_next_enemy_card = self.enemy_predict(output)
-        output = self.q_est(output)
+        advantage = self.advantange_nn(output)
+        state_value = self.state_nn(output)
+        advantage = advantage - advantage.mean(dim=1, keepdim=True)
+        output = state_value + advantage
         if predict_enemy:
             return output, p_next_enemy_card
         return output

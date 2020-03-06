@@ -93,6 +93,8 @@ class TrainStep(Callback):
         sars = self.buffer.sample(self.batch_size)
         self.opt.zero_grad()
         sars = self.put_into_device(sars)
+        self.brain.train(True)
+        self.brain.requires_grad_(True)
         exp_rew_t, predict = self.brain(sars.s_t, sars.d_t, predict_enemy=True)
         exp_rew_t = exp_rew_t.gather(1, sars.a_t.long().unsqueeze(-1))
         is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
@@ -111,7 +113,7 @@ class TrainStep(Callback):
         if self.logger:
             self.logger.add_scalar('loss/q loss', qloss, iteration)
             self.logger.add_scalar('loss/predict_loss', error_predict, iteration)
-            self.logger.add_scalars('loss/losses', {'q loss': qloss, 'predict loss': error_predict, 'tot_loss': tot_loss})
+            self.logger.add_scalars('loss/losses', {'q loss': qloss, 'predict loss': error_predict, 'tot_loss': tot_loss}, iteration)
             self.logger.add_scalar('loss/tot_loss', tot_loss, iteration)
         tot_loss.backward()
         self.opt.step()

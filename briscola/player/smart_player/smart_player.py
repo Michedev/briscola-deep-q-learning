@@ -15,8 +15,8 @@ from path import Path
 FOLDER = Path(__file__).parent
 BRAINFILE = FOLDER / 'brain.pth'
 
-import math
 import torch
+from radam import RAdam
 from torch.optim import Adam
 
 
@@ -41,7 +41,7 @@ class QAgent:
             del weights
         self.brain.to(self._device)
         self.target_network.to(self._device)
-        self.opt = Adam(self.brain.parameters(), eps=0.0003)
+        self.opt = RAdam(self.brain.parameters(), eps=0.0003)
         self.step = 1
         self.episode = 0
         self.step_episode = 0
