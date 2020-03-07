@@ -23,8 +23,7 @@ class Brain(Module):
             ReLU(),
             Linear(self.middle_size, self.middle_size),
             BatchNorm1d(self.middle_size),
-            ReLU(),
-            GRU(self.middle_size, self.middle_size, 1)
+            ReLU()
         )
         self.policy_nn = Sequential(
             Linear(self.middle_size, 30),

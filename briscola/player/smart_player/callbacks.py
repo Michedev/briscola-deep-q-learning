@@ -78,7 +78,7 @@ class BatchIndexIterator(object):
         for i in range(self.num_batches):
             batch_slice = slice(i * batch_size, (i+1) * batch_size)
             if i == self.num_batches - 1:
-                batch_slice = slice(i * batch_size, None)
+                batch_slice = slice(i * batch_size, length)
             self.slices.append(batch_slice)
 
     def __iter__(self):

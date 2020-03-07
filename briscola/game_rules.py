@@ -14,4 +14,4 @@ def select_winner(table: list, briscola):
         second_points += 100
     if not first_briscola and not second_briscola and second.seed != first.seed:
         second_points -= 100
-    return second_points > first_points
+    return int(second_points > first_points)

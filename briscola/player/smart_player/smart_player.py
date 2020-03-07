@@ -63,7 +63,8 @@ class QAgent:
         state = torch.from_numpy(state).to(self._device).float().unsqueeze(0)
         self.experience_buffer.put_s_t(state)
         self.brain.eval()
-        p_a, value = self.brain(state).squeeze(0)
+        p_a, value = self.brain(state)
+        p_a.squeeze_(0)
         c = Categorical(probs=p_a)
         i = c.sample((1,)).squeeze()
         self.policy_log(self.step, p_a, i)
@@ -104,7 +105,7 @@ class SmartPlayer(BasePlayer, QAgent):
                                            WinRateLog(self.writer, every=100),
                                            IncreaseEpsilonOnLose(self, every=20, increase_perc=0.3),
                                            TrainStep(self.opt, self.experience_buffer, self.target_network, self.brain,
-                                                     10, 0, self.discount_factor,self._device,
+                                                     10, 0, self.discount_factor, self._device,
                                                      self.sample_experience, self.writer),
                                            )
 
@@ -112,6 +113,7 @@ class SmartPlayer(BasePlayer, QAgent):
         self._reward = 0
         self._out_of_hand = False
         self.last_winner = True
+        self.first_turn = True
         self.id_enemy_discard = -1
         self.my_card_discarded = []
         self.enemy_discarded = []
@@ -119,13 +121,14 @@ class SmartPlayer(BasePlayer, QAgent):
 
     def choose_card(self) -> int:
         state = build_state_array(self.get_public_state(), self.hand, self.name)
-        if self.step_episode > 0:
+        if not self.first_turn:
             self.get_reward(state, self._reward)
         i = self.decide(state)
         if i >= len(self.hand):
             i = randint(0, len(self.hand) - 1)
             self._out_of_hand = True
         self.id_self_discard = self.hand[i].id
+        self.first_turn = False
         return i
 
     def notify_game_winner(self, name: str):

@@ -15,7 +15,8 @@ def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
         range_i = slice(i * 6, (i + 1) * 6)
         x[range_i] = encode_card(c)
     offset = 18
-    x[offset:offset + 6] = encode_card(public_state.table[0])
+    if len(public_state.table) > 0:
+        x[offset:offset + 6] = encode_card(public_state.table[0])
     offset = 24
     x[offset:offset + 2] = public_state.points
     offset = 26
