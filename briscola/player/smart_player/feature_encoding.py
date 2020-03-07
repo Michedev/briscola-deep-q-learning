@@ -19,12 +19,13 @@ def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
         x[offset:offset + 6] = encode_card(public_state.table[0])
     offset = 24
     x[offset:offset + 2] = public_state.points
+    x[offset:offset + 2] /= 60.0
     offset = 26
     x[offset:offset + 6] = encode_card(public_state.briscola)
     offset = 32
     x[offset] = public_state.order[0] == pname
     offset = 33
-    x[offset] = public_state.turn
+    x[offset] = public_state.turn / 23.0
     return x
 
 

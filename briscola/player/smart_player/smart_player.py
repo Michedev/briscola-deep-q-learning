@@ -38,12 +38,12 @@ class QAgent:
             self.brain.load_state_dict(weights)
             del weights
         self.brain.to(self._device)
-        self.opt = RAdam(self.brain.parameters(), eps=0.0003)
+        self.opt = RAdam(self.brain.parameters(), lr=10e-2)
         self.step = 1
         self.episode = 0
         self.step_episode = 0
         self.mse = torch.nn.MSELoss('mean')
-        self.writer = SummaryWriter('briscola_logs')
+        self.writer = SummaryWriter('briscola_logs_1')
         self.epsilon = 1.0
         self._curiosity_values = None
         self.same_counter = 0
@@ -127,6 +127,7 @@ class SmartPlayer(BasePlayer, QAgent):
         return i
 
     def notify_game_winner(self, name: str):
+        self.experience_buffer.set_done()
         self.matches_callbacks(self.counter)
         self.reset()
         if name == self.name:

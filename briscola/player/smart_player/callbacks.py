@@ -112,18 +112,20 @@ class TrainStep(Callback):
     def call(self, iteration, extra: list):
         self.brain.train()
         episodes = self.buffer.get_all()
-        self.opt.zero_grad()
         episodes = self.put_into_device(episodes)
         self.brain.train(True)
         self.brain.requires_grad_(True)
         for i_batch in BatchIndexIterator(self.buffer.experience_size, self.batch_size):
+            self.opt.zero_grad()
             p_a, state_value, predict = self.brain(episodes.s_t[i_batch], predict_enemy=True)
             p_a = p_a.gather(1, episodes.a_t[i_batch].long().unsqueeze(-1)).squeeze()
-            batch_reward = episodes.r_t[i_batch]
             state_value = state_value.squeeze(1)
-            policy_loss = torch.log(p_a) * (batch_reward - state_value)
+            _, state_value_next = self.brain(episodes.s_t1[i_batch])
+            state_value_next = state_value_next.squeeze(1)
+            advantage = (1 - episodes.done[i_batch]) * self.discount_factor * (state_value_next - state_value) + episodes.r_t[i_batch]
+            policy_loss = torch.log(p_a) * advantage.detach()
             policy_loss = - policy_loss.mean(dim=0)
-            state_loss = self.mse(batch_reward, state_value)
+            state_loss = (advantage ** 2).mean(dim=0)
             enemy_cards = episodes.enemy_card[i_batch].long() - 1
             filter_predict = enemy_cards >= 0
             error_predict = predict[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1))
@@ -139,8 +141,9 @@ class TrainStep(Callback):
                                         self.batch_counter)
             tot_loss.backward()
             self.batch_counter += 1
+            if self.batch_counter % 10 == 0:
+                self.log_weights.call(iteration, [])
             self.opt.step()
-        self.log_weights.call(iteration, [])
         gc.collect()
 
 
@@ -200,4 +203,4 @@ class WeightsLog(Callback):
             path_module = modname.replace('.', '/')
             self.logger.add_histogram(path_module, params, iteration)
             if params.grad is not None:
-                self.logger.add_histogram(path_module + '_grad', params.grad, iteration)
+                self.logger.add_histogram(path_module + '/grad', params.grad, iteration)

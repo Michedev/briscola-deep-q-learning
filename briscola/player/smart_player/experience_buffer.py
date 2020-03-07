@@ -5,7 +5,7 @@ import torch
 from path import Path
 from card import Deck
 
-SARS = namedtuple('SARS', ['s_t', 'a_t', 'r_t', 's_t1', 'enemy_card'])
+SARS = namedtuple('SARS', ['s_t', 'a_t', 'r_t', 's_t1', 'enemy_card', 'done'])
 
 
 class ExperienceBuffer:
@@ -21,7 +21,8 @@ class ExperienceBuffer:
             torch.zeros(experience_size, dtype=torch.int8, device='cpu'),  # action
             torch.zeros(experience_size, dtype=torch.float32, device='cpu'),  # reward_t
             torch.zeros(experience_size, *self.state_size, dtype=torch.float32, device='cpu'),  # s_t1
-            torch.zeros(experience_size, dtype=torch.int8, device='cpu')  # enemy card
+            torch.zeros(experience_size, dtype=torch.int8, device='cpu'),  # enemy card
+            torch.zeros(experience_size, dtype=torch.int8, device='cpu')  # done
         ]
 
     def put_s_t(self, value):
@@ -45,6 +46,9 @@ class ExperienceBuffer:
     def get_next_enemy_card_id(self, value):
         self.experience_buffer[4][self.i_experience - 1] = value
 
+    def set_done(self):
+        self.experience_buffer[5][self.i_experience] = 1
+
     def increase_i(self):
         self.i_experience += 1
         self.experience_size = max(self.experience_size, self.i_experience)
@@ -62,7 +66,7 @@ class ExperienceBuffer:
         for i in range(episode_length):
             qvalues[i] = rewards[i]
             if i < episode_length - 1:
-                qvalues[i] += (rewards[i+1:] * discount_rate ** (torch.arange(1, episode_length+1-i-1))).sum()
+                qvalues[i] += (rewards[i + 1:] * discount_rate ** (torch.arange(1, episode_length + 1 - i - 1))).sum()
         self.experience_buffer[2][-episode_length:] = qvalues
 
     def get_all(self):

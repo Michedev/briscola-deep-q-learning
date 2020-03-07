@@ -5,10 +5,9 @@ from torch.nn import *
 def EnemyNextCard(input_size):
     return Sequential(
         Linear(input_size, input_size),
-        BatchNorm1d(input_size),
         ReLU(),
         Linear(input_size, 40),
-        LogSoftmax()
+        LogSoftmax(dim=1)
     )
 
 
@@ -16,25 +15,22 @@ class Brain(Module):
 
     def __init__(self, state_size: list):
         super(Brain, self).__init__()
-        self.middle_size = 256
+        self.middle_size = 35
         self.common_features = Sequential(
+            BatchNorm1d(state_size[-1]),
             Linear(state_size[-1], self.middle_size),
-            BatchNorm1d(self.middle_size),
             ReLU(),
             Linear(self.middle_size, self.middle_size),
-            BatchNorm1d(self.middle_size),
             ReLU()
         )
         self.recurrent = GRU(self.middle_size, self.middle_size, 2)
         self.policy_nn = Sequential(
             Linear(self.middle_size, 30),
-            BatchNorm1d(30),
             ReLU(),
             Linear(30, 3),
             Softmax(dim=1)
         )
         self.state_nn = Sequential(Linear(self.middle_size, 30),
-                                   BatchNorm1d(30),
                                    ReLU(),
                                    Linear(30, 1))
 
