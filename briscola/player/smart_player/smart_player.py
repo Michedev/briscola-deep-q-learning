@@ -33,14 +33,11 @@ class QAgent:
         self.input_size = list(input_size)
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.brain = Brain(input_size)  # throw first, second, third card
-        self.target_network = Brain(input_size)
         if BRAINFILE.exists():
             weights = torch.load(BRAINFILE)
             self.brain.load_state_dict(weights)
-            self.target_network.load_state_dict(weights)
             del weights
         self.brain.to(self._device)
-        self.target_network.to(self._device)
         self.opt = RAdam(self.brain.parameters(), eps=0.0003)
         self.step = 1
         self.episode = 0
@@ -51,10 +48,8 @@ class QAgent:
         self._curiosity_values = None
         self.same_counter = 0
         self.destination_position = None
-        self.experience_buffer = ExperienceBuffer(input_size, 50)
+        self.experience_buffer = ExperienceBuffer(input_size, 10000)
         self.decide_callbacks = Callbacks(
-            TargetNetworkUpdate(self.brain, self.target_network, self.update_q_fut),
-            WeightsLog(self.brain, self.writer, every=1000, gradient=True),
         )
         self.policy_log = ProbLog(self.writer, every=30)
 
@@ -86,7 +81,6 @@ class QAgent:
         torch.save(self.brain.state_dict(), BRAINFILE)
         self.epsilon = max(self.epsilon - 0.001, 0.1)
         self.writer.add_scalar('steps per episode', self.step_episode, self.episode)
-        self.experience_buffer.calc_q_values(self.step_episode, self.discount_factor)
         self.episode += 1
         self.step_episode = 0
         self.experience_buffer.reset()
@@ -104,7 +98,7 @@ class SmartPlayer(BasePlayer, QAgent):
         self.matches_callbacks = Callbacks(WinRateLog(self.writer, every=10),
                                            WinRateLog(self.writer, every=100),
                                            IncreaseEpsilonOnLose(self, every=20, increase_perc=0.3),
-                                           TrainStep(self.opt, self.experience_buffer, self.target_network, self.brain,
+                                           TrainStep(self.opt, self.experience_buffer, None, self.brain,
                                                      10, 0, self.discount_factor, self._device,
                                                      self.sample_experience, self.writer),
                                            )
@@ -128,44 +122,46 @@ class SmartPlayer(BasePlayer, QAgent):
             i = randint(0, len(self.hand) - 1)
             self._out_of_hand = True
         self.id_self_discard = self.hand[i].id
+        self.experience_buffer.put_a_t(i)
         self.first_turn = False
         return i
 
     def notify_game_winner(self, name: str):
+        self.matches_callbacks(self.counter)
         self.reset()
         if name == self.name:
             for win_logger in self.matches_callbacks.callbacks:
-                win_logger.notify_win()
+                if hasattr(win_logger, 'notify_win'):
+                    win_logger.notify_win()
         self.counter += 1
-        self.matches_callbacks(self.counter)
         self.writer.add_scalar('epsilon', self.epsilon, self.counter)
         self._init_game_vars()
 
     def on_enemy_discard(self, card):
         self.id_enemy_discard = card.id
-        if self.step > 0:
+        if not self.first_turn:
             self.experience_buffer.put_next_enemy_card_id(card.id)
 
     def notify_turn_winner(self, points: int):
-        self._reward = points / 22.0 / 2.0  # [-0.5, 0.5]
+        self._reward = points / 22.0 # [-0.5, 0.5]
         if self._out_of_hand:
             self._reward = -0.7
             self._out_of_hand = False
         if points > 0:
-            self._on_my_win()
+            self._on_my_turn_win()
         elif points < 0:
-            self._on_enemy_win()
+            self._on_enemy_turn_win()
         elif self.last_winner:
-            self._on_my_win()
+            self._on_my_turn_win()
         else:
-            self._on_enemy_win()
+            self._on_enemy_turn_win()
 
-    def _on_my_win(self):
+    def _on_my_turn_win(self):
         self.my_card_discarded.append(self.id_enemy_discard)
         self.my_card_discarded.append(self.id_self_discard)
         self.last_winner = True
 
-    def _on_enemy_win(self):
+    def _on_enemy_turn_win(self):
         self.enemy_discarded.append(self.id_enemy_discard)
         self.enemy_discarded.append(self.id_self_discard)
         self.last_winner = False

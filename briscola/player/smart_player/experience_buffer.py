@@ -62,7 +62,7 @@ class ExperienceBuffer:
         for i in range(episode_length):
             qvalues[i] = rewards[i]
             if i < episode_length - 1:
-                qvalues[i] += (rewards[i+1:] * discount_rate ** (torch.arange(1, episode_length+1-i))).sum()
+                qvalues[i] += (rewards[i+1:] * discount_rate ** (torch.arange(1, episode_length+1-i-1))).sum()
         self.experience_buffer[2][-episode_length:] = qvalues
 
     def get_all(self):

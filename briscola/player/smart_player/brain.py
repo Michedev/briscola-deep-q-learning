@@ -25,6 +25,7 @@ class Brain(Module):
             BatchNorm1d(self.middle_size),
             ReLU()
         )
+        self.recurrent = GRU(self.middle_size, self.middle_size, 2)
         self.policy_nn = Sequential(
             Linear(self.middle_size, 30),
             BatchNorm1d(30),
@@ -41,6 +42,9 @@ class Brain(Module):
 
     def forward(self, state: torch.Tensor, predict_enemy=False):
         output = self.common_features(state)
+        output = output.unsqueeze(1)
+        output, hidden = self.recurrent(output)
+        output = output.squeeze(1)
         p_a = self.policy_nn(output)
         state_value = self.state_nn(output)
         if predict_enemy:
