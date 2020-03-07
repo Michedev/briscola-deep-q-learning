@@ -11,8 +11,6 @@ def play_smart_vs_random(n=None):
     if n is None:
         n = 1
     p1 = SmartPlayer()
-    if MODEL_PATH.exists():
-        p1.brain.load_weights(MODEL_PATH)
     p2 = PseudoRandomPlayer()
     wins_p1 = 0
     for i in range(n):
@@ -20,7 +18,7 @@ def play_smart_vs_random(n=None):
         p1.set_observable_public_state(game.public_state)
         winner = game.setup_and_play()
         if not isinstance(winner, list):
-            print('winner is ', winner.name)
+            # print('winner is ', winner.name)
             if p1.name == winner.name:
                 wins_p1 += 1
         else:
