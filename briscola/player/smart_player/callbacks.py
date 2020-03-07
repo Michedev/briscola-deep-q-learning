@@ -1,4 +1,6 @@
-from experience_buffer import SARS
+from math import ceil
+
+from experience_buffer import SARS, ExperienceBuffer
 from abc import ABC, abstractmethod
 import torch
 import gc
@@ -66,6 +68,23 @@ class IncreaseEpsilonOnLose(Callback):
         self.wins = 0
 
 
+class BatchIndexIterator(object):
+
+    def __init__(self, length, batch_size):
+        self.batch_size = batch_size
+        self.length = length
+        self.num_batches = ceil(length / batch_size)
+        self.slices = []
+        for i in range(self.num_batches):
+            batch_slice = slice(i * batch_size, (i+1) * batch_size)
+            if i == self.num_batches - 1:
+                batch_slice = slice(i * batch_size, None)
+            self.slices.append(batch_slice)
+
+    def __iter__(self):
+        return iter(self.slices)
+
+
 class TrainStep(Callback):
 
     def __init__(self, opt, buffer, target_network, brain, every,
@@ -74,11 +93,12 @@ class TrainStep(Callback):
         self.logger = logger
         self.batch_size = batch_size
         self.discount_factor = discount_factor
-        self.buffer = buffer
+        self.buffer: ExperienceBuffer = buffer
         self.no_update_start = no_update_start
         self.every = every
         self.target_network = target_network
         self.opt = opt
+        self.batch_counter = 0
         self.mse = torch.nn.MSELoss(reduction='mean')
         self.brain = brain
         self.device = device
@@ -90,35 +110,32 @@ class TrainStep(Callback):
 
     def call(self, iteration, extra: list):
         self.brain.train()
-        sars = self.buffer.sample(self.batch_size)
+        episodes = self.buffer.get_all()
         self.opt.zero_grad()
-        sars = self.put_into_device(sars)
+        episodes = self.put_into_device(episodes)
         self.brain.train(True)
         self.brain.requires_grad_(True)
-        exp_rew_t, predict = self.brain(sars.s_t, sars.d_t, predict_enemy=True)
-        exp_rew_t = exp_rew_t.gather(1, sars.a_t.long().unsqueeze(-1))
-        is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
-        is_finished_episode = is_finished_episode.float().unsqueeze(-1)
-        exp_rew_t3 = is_finished_episode * self.target_network(sars.s_t1, sars.d_t1)
-        exp_rew_t3 = torch.max(exp_rew_t3, dim=1)
-        if isinstance(exp_rew_t3, tuple):
-            exp_rew_t3 = exp_rew_t3[0]
-        y = sars.r_t + self.discount_factor * sars.r_t1 + \
-            self.discount_factor ** 2 * sars.r_t2 + \
-            self.discount_factor ** 3 * exp_rew_t3
-        qloss = self.mse(y, exp_rew_t)
-        error_predict = predict.gather(1, sars.enemy_card.long().unsqueeze(-1)) #torch.FloatTensor([predict[i, sars.enemy_card[i].item()] for i in range(predict.shape[0])]).to(self.device)
-        error_predict = - error_predict.mean(dim=0)
-        tot_loss = qloss + error_predict
-        if self.logger:
-            self.logger.add_scalar('loss/q loss', qloss, iteration)
-            self.logger.add_scalar('loss/predict_loss', error_predict, iteration)
-            self.logger.add_scalars('loss/losses', {'q loss': qloss, 'predict loss': error_predict, 'tot_loss': tot_loss}, iteration)
-            self.logger.add_scalar('loss/tot_loss', tot_loss, iteration)
-        tot_loss.backward()
+        for i_batch in BatchIndexIterator(self.buffer.experience_size, self.batch_size):
+            p_a, state_value, predict = self.brain(episodes.s_t[i_batch], predict_enemy=True)
+            p_a = p_a.gather(1, episodes.a_t[i_batch].long().unsqueeze(-1))
+            batch_reward = episodes.r_t[i_batch]
+            policy_loss = - torch.log(p_a) * (batch_reward - state_value)
+            state_loss = self.mse(batch_reward, state_value)
+            error_predict = predict.gather(1, episodes.enemy_card[i_batch].long().unsqueeze(-1))
+            error_predict = - error_predict.mean(dim=0)
+            tot_loss = state_loss + error_predict + policy_loss
+            if self.logger:
+                self.logger.add_scalar('loss/policy_loss', policy_loss, self.batch_counter)
+                self.logger.add_scalar('loss/state_value_loss', state_loss, self.batch_counter)
+                self.logger.add_scalar('loss/predict_loss', error_predict, self.batch_counter)
+                self.logger.add_scalar('loss/tot_loss', tot_loss, self.batch_counter)
+                self.logger.add_scalars('loss/losses', {'policy_loss': policy_loss, 'state loss': state_loss,
+                                                        'predict loss': error_predict, 'tot_loss': tot_loss},
+                                        self.batch_counter)
+            tot_loss.backward()
+            self.batch_counter += 1
         self.opt.step()
         gc.collect()
-        return tot_loss
 
 
 class TargetNetworkUpdate(Callback):
@@ -133,21 +150,21 @@ class TargetNetworkUpdate(Callback):
         self.target.load_state_dict(self.brain.state_dict())
 
 
-class QValuesLog(Callback):
+class ProbLog(Callback):
 
     def __init__(self, logger, every=10):
         super().__init__(every)
         self.logger = logger
 
     def call(self, iteration, extra: list):
-        q_values, action = extra
-        self.logger.add_scalars('q_values',
-                                {'first': q_values[0], 'second': q_values[1], 'third': q_values[2]},
+        p_a, action = extra
+        self.logger.add_scalars('policy',
+                                {'first': p_a[0], 'second': p_a[1], 'third': p_a[2]},
                                 iteration)
-        self.logger.add_scalar('q_values/first', q_values[0], iteration)
-        self.logger.add_scalar('q_values/second', q_values[1], iteration)
-        self.logger.add_scalar('q_values/third', q_values[2], iteration)
-        self.logger.add_scalar('q_values/action', action, iteration)
+        self.logger.add_scalar('policy/first_card', p_a[0], iteration)
+        self.logger.add_scalar('policy/second_card', p_a[1], iteration)
+        self.logger.add_scalar('policy/third_card', p_a[2], iteration)
+        self.logger.add_scalar('policy/action', action, iteration)
 
 
 class Callbacks:
