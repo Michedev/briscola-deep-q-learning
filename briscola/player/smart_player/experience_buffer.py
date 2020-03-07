@@ -63,10 +63,10 @@ class ExperienceBuffer:
         return self.experience_buffer[7][self.i_experience - decrease]
 
     def put_next_enemy_card_id(self, value):
-        self.experience_buffer[7][self.i_experience-1] = value
+        self.experience_buffer[8][self.i_experience-1] = value
 
     def get_next_enemy_card_id(self, value):
-        self.experience_buffer[7][self.i_experience-1] = value
+        self.experience_buffer[8][self.i_experience-1] = value
 
 
 
