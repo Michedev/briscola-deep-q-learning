@@ -107,7 +107,9 @@ class TrainStep(Callback):
             self.discount_factor ** 2 * sars.r_t2 + \
             self.discount_factor ** 3 * exp_rew_t3
         qloss = self.mse(y, exp_rew_t)
-        error_predict = predict.gather(1, sars.enemy_card.long().unsqueeze(-1)) #torch.FloatTensor([predict[i, sars.enemy_card[i].item()] for i in range(predict.shape[0])]).to(self.device)
+        enemy_cards = sars.enemy_card.long()-1
+        filter_predict = enemy_cards >= 0
+        error_predict = predict[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1)) #torch.FloatTensor([predict[i, sars.enemy_card[i].item()] for i in range(predict.shape[0])]).to(self.device)
         error_predict = - error_predict.mean(dim=0)
         tot_loss = qloss + error_predict
         if self.logger:

@@ -70,7 +70,7 @@ class QAgent:
         self.experience_buffer.put_d_t(extra)
         self.brain.eval()
         if self.epsilon > random():
-            i = randint(0, len(hand_ids))
+            i = randint(0, len(hand_ids)-1)
         else:
             q_values = self.brain(table, extra).squeeze(0)
             i = torch.argmax(q_values).item()
@@ -145,6 +145,7 @@ class SmartPlayer(BasePlayer, QAgent):
         if i >= len(self.hand):
             i = randint(0, len(self.hand) - 1)
             self._out_of_hand = True
+        self.experience_buffer.put_a_t(i)
         self.id_self_discard = self.hand[i].id
         self.first_turn = False
         return i
