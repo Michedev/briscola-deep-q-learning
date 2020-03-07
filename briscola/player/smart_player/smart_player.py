@@ -129,6 +129,7 @@ class SmartPlayer(BasePlayer, QAgent):
         self._reward = 0
         self._out_of_hand = False
         self.last_winner = True
+        self.first_turn = True
         self.id_enemy_discard = -1
         self.my_card_discarded = []
         self.enemy_discarded = []
@@ -138,13 +139,14 @@ class SmartPlayer(BasePlayer, QAgent):
     def choose_card(self) -> int:
         state = build_state_array(self.get_public_state(), self.hand, self.name)
         self.last_state = [state, self.my_card_discarded + self.enemy_discarded, [c.id for c in self.hand]]
-        if self.step_episode > 0:
+        if not self.first_turn:
             self.get_reward(self.last_state, self._out_of_hand)
         i = self.decide(self.last_state)
         if i >= len(self.hand):
             i = randint(0, len(self.hand) - 1)
             self._out_of_hand = True
         self.id_self_discard = self.hand[i].id
+        self.first_turn = False
         return i
 
     def notify_game_winner(self, name: str):

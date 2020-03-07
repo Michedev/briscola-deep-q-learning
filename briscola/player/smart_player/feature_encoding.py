@@ -10,6 +10,7 @@ from game_rules import values_points
 
 def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
     x = np.zeros((34,))
+    x[:18] = -1
     for i, c in enumerate(hand):
         range_i = slice(i * 6, (i + 1) * 6)
         x[range_i] = encode_card(c)
@@ -44,7 +45,7 @@ def build_x_discarded(state: 'PublicState', hand: List[Card]):
 
 def encode_card(c: Card) -> np.ndarray:
     if c is None:
-        return np.zeros((6,))
+        return np.zeros((6,)) -1
     ohe_seed = Seed.ohe_repr(c.seed)
     points_card = values_points[c.value] / 11.0
     value_card = c.value / 10.0
