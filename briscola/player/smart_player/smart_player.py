@@ -17,7 +17,7 @@ BRAINFILE = FOLDER / 'brain.pth'
 
 import torch
 from radam import RAdam
-from pyro.distributions import Categorical
+from torch.distributions import Categorical
 
 
 class QAgent:
@@ -38,13 +38,10 @@ class QAgent:
             self.brain.load_state_dict(weights)
             del weights
         self.brain.to(self._device)
-        self.opt = RAdam(self.brain.parameters(), lr=10e-2)
         self.step = 1
         self.episode = 0
         self.step_episode = 0
-        self.mse = torch.nn.MSELoss('mean')
-        self.writer = SummaryWriter('briscola_logs_1')
-        self.epsilon = 1.0
+        self.writer = SummaryWriter('briscola_logs')
         self._curiosity_values = None
         self.same_counter = 0
         self.destination_position = None
@@ -62,7 +59,7 @@ class QAgent:
         p_a.squeeze_(0)
         c = Categorical(probs=p_a)
         i = c.sample((1,)).squeeze()
-        self.policy_log(self.step, p_a, i)
+        self.policy_log(self.step, p_a, i, value)
         return i
 
     def get_reward(self, next_state, reward):
@@ -97,8 +94,7 @@ class SmartPlayer(BasePlayer, QAgent):
         self._init_game_vars()
         self.matches_callbacks = Callbacks(WinRateLog(self.writer, every=10),
                                            WinRateLog(self.writer, every=100),
-                                           IncreaseEpsilonOnLose(self, every=20, increase_perc=0.3),
-                                           TrainStep(self.opt, self.experience_buffer, None, self.brain,
+                                           TrainStep(None, self.experience_buffer, None, self.brain,
                                                      10, 0, self.discount_factor, self._device,
                                                      self.sample_experience, self.writer),
                                            )
@@ -118,9 +114,8 @@ class SmartPlayer(BasePlayer, QAgent):
         if not self.first_turn:
             self.get_reward(state, self._reward)
         i = self.decide(state)
-        if i >= len(self.hand):
-            i = randint(0, len(self.hand) - 1)
-            self._out_of_hand = True
+        while i >= len(self.hand):
+            i = self.decide(state)
         self.id_self_discard = self.hand[i].id
         self.experience_buffer.put_a_t(i)
         self.first_turn = False
@@ -135,7 +130,6 @@ class SmartPlayer(BasePlayer, QAgent):
                 if hasattr(win_logger, 'notify_win'):
                     win_logger.notify_win()
         self.counter += 1
-        self.writer.add_scalar('epsilon', self.epsilon, self.counter)
         self._init_game_vars()
 
     def on_enemy_discard(self, card):
@@ -144,10 +138,7 @@ class SmartPlayer(BasePlayer, QAgent):
             self.experience_buffer.put_next_enemy_card_id(card.id)
 
     def notify_turn_winner(self, points: int):
-        self._reward = points / 22.0 # [-0.5, 0.5]
-        if self._out_of_hand:
-            self._reward = -0.7
-            self._out_of_hand = False
+        self._reward = points # [-0.5, 0.5]
         if points > 0:
             self._on_my_turn_win()
         elif points < 0:

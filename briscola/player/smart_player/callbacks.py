@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 import torch
 import gc
 
+from radam import RAdam
+
 
 class Callback(ABC):
 
@@ -95,14 +97,16 @@ class TrainStep(Callback):
         self.discount_factor = discount_factor
         self.buffer: ExperienceBuffer = buffer
         self.no_update_start = no_update_start
+        self.opt_critic = RAdam(brain.parameters(), eps=10-4)
+        self.opt_actor = RAdam(brain.parameters(), eps=10e-4)
+        self.opt_predict = RAdam(brain.parameters(), eps=10e-4)
         self.every = every
         self.target_network = target_network
-        self.opt = opt
         self.batch_counter = 0
         self.mse = torch.nn.MSELoss(reduction='mean')
         self.brain = brain
         self.device = device
-        self.log_weights = WeightsLog(self.brain, self.logger)
+        self.log_weights = WeightsLog(self.brain, self.logger, gradient=True)
         super().__init__(every, no_update_start)
 
     def put_into_device(self, sars):
@@ -116,7 +120,6 @@ class TrainStep(Callback):
         self.brain.train(True)
         self.brain.requires_grad_(True)
         for i_batch in BatchIndexIterator(self.buffer.experience_size, self.batch_size):
-            self.opt.zero_grad()
             p_a, state_value, predict = self.brain(episodes.s_t[i_batch], predict_enemy=True)
             p_a = p_a.gather(1, episodes.a_t[i_batch].long().unsqueeze(-1)).squeeze()
             state_value = state_value.squeeze(1)
@@ -130,6 +133,9 @@ class TrainStep(Callback):
             filter_predict = enemy_cards >= 0
             error_predict = predict[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1))
             error_predict = - error_predict.mean(dim=0)
+
+            self.updates(error_predict, policy_loss, state_loss)
+
             tot_loss = state_loss + error_predict + policy_loss
             if self.logger:
                 self.logger.add_scalar('loss/policy_loss', policy_loss, self.batch_counter)
@@ -139,12 +145,21 @@ class TrainStep(Callback):
                 self.logger.add_scalars('loss/losses', {'policy_loss': policy_loss, 'state loss': state_loss,
                                                         'predict loss': error_predict, 'tot_loss': tot_loss},
                                         self.batch_counter)
-            tot_loss.backward()
             self.batch_counter += 1
             if self.batch_counter % 10 == 0:
                 self.log_weights.call(iteration, [])
-            self.opt.step()
         gc.collect()
+
+    def updates(self, error_predict, policy_loss, state_loss):
+        self.opt_actor.zero_grad()
+        policy_loss.backward(retain_graph=True)
+        self.opt_actor.step()
+        self.opt_critic.zero_grad()
+        state_loss.backward(retain_graph=True)
+        self.opt_critic.step()
+        self.opt_predict.zero_grad()
+        error_predict.backward()
+        self.opt_predict.step()
 
 
 class TargetNetworkUpdate(Callback):
@@ -166,7 +181,7 @@ class ProbLog(Callback):
         self.logger = logger
 
     def call(self, iteration, extra: list):
-        p_a, action = extra
+        p_a, action, state_value = extra
         self.logger.add_scalars('policy',
                                 {'first': p_a[0], 'second': p_a[1], 'third': p_a[2]},
                                 iteration)
@@ -174,6 +189,8 @@ class ProbLog(Callback):
         self.logger.add_scalar('policy/second_card', p_a[1], iteration)
         self.logger.add_scalar('policy/third_card', p_a[2], iteration)
         self.logger.add_scalar('policy/action', action, iteration)
+        self.logger.add_scalar('policy/state_value', state_value, iteration)
+
 
 
 class Callbacks:
