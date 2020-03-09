@@ -5,15 +5,17 @@ import torch
 
 from card import Card
 from seed import Seed
-from game_rules import values_points
+from game_rules import values_points, select_winner
 
 
 def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
-    x = np.zeros((34,))
-    x[:18] = -1
+    x = np.zeros((40,)) -1
     for i, c in enumerate(hand):
         range_i = slice(i * 6, (i + 1) * 6)
         x[range_i] = encode_card(c)
+        if len(public_state.table) > 0:
+            x[-len(hand) + i] = select_winner(public_state.table + [c], public_state.briscola)
+            x[-len(hand) * 2 + i] = (c.points + public_state.table[0].points) / 22.0
     offset = 18
     if len(public_state.table) > 0:
         x[offset:offset + 6] = encode_card(public_state.table[0])

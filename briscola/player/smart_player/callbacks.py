@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 import torch
 import gc
 
+from torch.optim.adamw import AdamW
+from torch.optim import SGD, Adam
 from radam import RAdam
 
 
@@ -97,9 +99,7 @@ class TrainStep(Callback):
         self.discount_factor = discount_factor
         self.buffer: ExperienceBuffer = buffer
         self.no_update_start = no_update_start
-        self.opt_critic = RAdam(brain.parameters(), eps=10-4)
-        self.opt_actor = RAdam(brain.parameters(), eps=10e-4)
-        self.opt_predict = RAdam(brain.parameters(), eps=10e-4)
+        self.opt = Adam(brain.parameters())
         self.every = every
         self.target_network = target_network
         self.batch_counter = 0
@@ -120,7 +120,7 @@ class TrainStep(Callback):
         self.brain.train(True)
         self.brain.requires_grad_(True)
         for i_batch in BatchIndexIterator(self.buffer.experience_size, self.batch_size):
-            p_a, state_value, predict = self.brain(episodes.s_t[i_batch], predict_enemy=True)
+            p_a, state_value = self.brain(episodes.s_t[i_batch], predict_enemy=False)
             p_a = p_a.gather(1, episodes.a_t[i_batch].long().unsqueeze(-1)).squeeze()
             state_value = state_value.squeeze(1)
             _, state_value_next = self.brain(episodes.s_t1[i_batch])
@@ -129,37 +129,21 @@ class TrainStep(Callback):
             policy_loss = torch.log(p_a) * advantage.detach()
             policy_loss = - policy_loss.mean(dim=0)
             state_loss = (advantage ** 2).mean(dim=0)
-            enemy_cards = episodes.enemy_card[i_batch].long() - 1
-            filter_predict = enemy_cards >= 0
-            error_predict = predict[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1))
-            error_predict = - error_predict.mean(dim=0)
-
-            self.updates(error_predict, policy_loss, state_loss)
-
-            tot_loss = state_loss + error_predict + policy_loss
+            tot_loss = state_loss + policy_loss
+            tot_loss.backward()
+            if self.batch_counter % 10 == 0:
+                self.log_weights.call(iteration, [])
+            self.opt.step()
             if self.logger:
                 self.logger.add_scalar('loss/policy_loss', policy_loss, self.batch_counter)
                 self.logger.add_scalar('loss/state_value_loss', state_loss, self.batch_counter)
-                self.logger.add_scalar('loss/predict_loss', error_predict, self.batch_counter)
                 self.logger.add_scalar('loss/tot_loss', tot_loss, self.batch_counter)
                 self.logger.add_scalars('loss/losses', {'policy_loss': policy_loss, 'state loss': state_loss,
-                                                        'predict loss': error_predict, 'tot_loss': tot_loss},
+                                                        'tot_loss': tot_loss},
                                         self.batch_counter)
             self.batch_counter += 1
-            if self.batch_counter % 10 == 0:
-                self.log_weights.call(iteration, [])
         gc.collect()
-
-    def updates(self, error_predict, policy_loss, state_loss):
-        self.opt_actor.zero_grad()
-        policy_loss.backward(retain_graph=True)
-        self.opt_actor.step()
-        self.opt_critic.zero_grad()
-        state_loss.backward(retain_graph=True)
-        self.opt_critic.step()
-        self.opt_predict.zero_grad()
-        error_predict.backward()
-        self.opt_predict.step()
+        torch.save(self.opt.state_dict(), 'opt_state.pt')
 
 
 class TargetNetworkUpdate(Callback):

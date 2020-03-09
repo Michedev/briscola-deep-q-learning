@@ -16,7 +16,6 @@ FOLDER = Path(__file__).parent
 BRAINFILE = FOLDER / 'brain.pth'
 
 import torch
-from radam import RAdam
 from torch.distributions import Categorical
 
 
@@ -86,7 +85,7 @@ class QAgent:
 class SmartPlayer(BasePlayer, QAgent):
 
     def __init__(self):
-        QAgent.__init__(self, input_size=[34])
+        QAgent.__init__(self, input_size=[40])
         BasePlayer.__init__(self)
 
         self.name = "intelligent_player"
@@ -123,6 +122,8 @@ class SmartPlayer(BasePlayer, QAgent):
 
     def notify_game_winner(self, name: str):
         self.experience_buffer.set_done()
+        i_win = name == self.name
+        self.experience_buffer.put_r_t(1.0 * int(i_win))
         self.matches_callbacks(self.counter)
         self.reset()
         if name == self.name:
@@ -138,7 +139,7 @@ class SmartPlayer(BasePlayer, QAgent):
             self.experience_buffer.put_next_enemy_card_id(card.id)
 
     def notify_turn_winner(self, points: int):
-        self._reward = points # [-0.5, 0.5]
+        self._reward = (points + 11) / 22.0 * 2 / 3 # [0, 0.66]
         if points > 0:
             self._on_my_turn_win()
         elif points < 0:

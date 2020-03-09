@@ -1,14 +1,17 @@
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
+from game_rules import values_points
 from briscola.seed import Seed
 from random import shuffle
 
 
-@dataclass(frozen=True)
+@dataclass()
 class Card:
     id: int
     value: int
     seed: int
+
+    def __post_init__(self):
+        self.points = values_points[self.value]
 
 
 class Deck:
