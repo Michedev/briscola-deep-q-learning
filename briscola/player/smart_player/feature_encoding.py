@@ -5,27 +5,31 @@ import torch
 
 from card import Card
 from seed import Seed
-from game_rules import values_points
+from game_rules import values_points, select_winner
 
 
 def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
-    x = np.zeros((34,))
-    x[:18] = -1
+    x = np.zeros((40,)) -1
     for i, c in enumerate(hand):
         range_i = slice(i * 6, (i + 1) * 6)
         x[range_i] = encode_card(c)
+        if len(public_state.table) > 0:
+            x[-len(hand) + i] = select_winner(public_state.table + [c], public_state.briscola)
+            x[-len(hand) * 2 + i] = (c.points + public_state.table[0].points) / 22.0
     offset = 18
-    for c in public_state.table:
-        x[offset:offset + 6] = encode_card(c)
+    if len(public_state.table) > 0:
+        x[offset:offset + 6] = encode_card(public_state.table[0])
     offset = 24
     x[offset:offset + 2] = public_state.points
+    x[offset:offset + 2] /= 60.0
     offset = 26
     x[offset:offset + 6] = encode_card(public_state.briscola)
     offset = 32
     x[offset] = public_state.order[0] == pname
     offset = 33
-    x[offset] = public_state.turn
+    x[offset] = public_state.turn / 23.0
     return x
+
 
 
 def build_x_discarded(state: 'PublicState', hand: List[Card]):

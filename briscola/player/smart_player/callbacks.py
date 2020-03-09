@@ -79,6 +79,7 @@ class TrainStep(Callback):
         self.every = every
         self.target_network = target_network
         self.opt = opt
+        self.loss_log = LossLogger(self.logger, every=1, no_update_start=0)
         self.mse = torch.nn.MSELoss(reduction='mean')
         self.brain = brain
         self.device = device
@@ -95,7 +96,26 @@ class TrainStep(Callback):
         sars = self.put_into_device(sars)
         self.brain.train(True)
         self.brain.requires_grad_(True)
-        exp_rew_t, predict = self.brain(sars.s_t, sars.d_t, predict_enemy=True)
+        exp_rew_t, predict_enemy, predict_s_t1 = self.brain(sars.s_t, sars.d_t, predict_enemy=True, predict_next_state=True)
+        qloss = self.calc_q_loss(exp_rew_t, sars)
+        error_predict = 0.01 * self.calc_error_predict(predict_enemy, sars)
+        error_predict_s_t1 = self.calc_error_predict_ns(predict_s_t1, sars)
+        tot_loss = qloss + error_predict + error_predict_s_t1
+        if self.logger:
+            self.loss_log(iteration, qloss, error_predict, error_predict_s_t1, tot_loss)
+        tot_loss.backward()
+        self.opt.step()
+        gc.collect()
+        return tot_loss
+
+    def calc_error_predict(self, predict_enemy, sars):
+        enemy_cards = sars.enemy_card.long() - 1
+        filter_predict = enemy_cards >= 0
+        error_predict = predict_enemy[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1))
+        error_predict = - error_predict.mean(dim=0)
+        return error_predict
+
+    def calc_q_loss(self, exp_rew_t, sars):
         exp_rew_t = exp_rew_t.gather(1, sars.a_t.long().unsqueeze(-1))
         is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
         is_finished_episode = is_finished_episode.float().unsqueeze(-1)
@@ -106,21 +126,29 @@ class TrainStep(Callback):
         y = sars.r_t + self.discount_factor * sars.r_t1 + \
             self.discount_factor ** 2 * sars.r_t2 + \
             self.discount_factor ** 3 * exp_rew_t3
+        exp_rew_t = exp_rew_t.squeeze(1)
         qloss = self.mse(y, exp_rew_t)
-        enemy_cards = sars.enemy_card.long()-1
-        filter_predict = enemy_cards >= 0
-        error_predict = predict[filter_predict].gather(1, enemy_cards[filter_predict].unsqueeze(-1)) #torch.FloatTensor([predict[i, sars.enemy_card[i].item()] for i in range(predict.shape[0])]).to(self.device)
-        error_predict = - error_predict.mean(dim=0)
-        tot_loss = qloss + error_predict
-        if self.logger:
-            self.logger.add_scalar('loss/q loss', qloss, iteration)
-            self.logger.add_scalar('loss/predict_loss', error_predict, iteration)
-            self.logger.add_scalars('loss/losses', {'q loss': qloss, 'predict loss': error_predict, 'tot_loss': tot_loss}, iteration)
-            self.logger.add_scalar('loss/tot_loss', tot_loss, iteration)
-        tot_loss.backward()
-        self.opt.step()
-        gc.collect()
-        return tot_loss
+        return qloss
+
+    def calc_error_predict_ns(self, predict_next_state, sars):
+        return self.mse(sars.s_t1, predict_next_state)
+
+
+class LossLogger(Callback):
+
+    def __init__(self, logger, every=10, no_update_start=0):
+        super().__init__(every, no_update_start)
+        self.logger = logger
+
+    def call(self, iteration, extra: list):
+        qloss, error_predict, error_predict_next_state, tot_loss = extra
+        self.logger.add_scalar('loss/q loss', qloss, iteration)
+        self.logger.add_scalar('loss/predict_loss', error_predict, iteration)
+        self.logger.add_scalar('loss/predict_next_state', error_predict_next_state, iteration)
+        self.logger.add_scalars('loss/losses', {'q loss': qloss, 'predict loss': error_predict,
+                                                'predict_next_state': error_predict_next_state, 'tot_loss': tot_loss},
+                                iteration)
+        self.logger.add_scalar('loss/tot_loss', tot_loss, iteration)
 
 
 class TargetNetworkUpdate(Callback):

@@ -48,6 +48,20 @@ def EnemyNextCard(input_size):
     )
 
 
+def NextStatePredict(input_size, state_size: int):
+    return Sequential(
+        Linear(input_size, input_size // 2),
+        BatchNorm1d(input_size // 2),
+        ReLU(),
+        Linear(input_size // 2, input_size // 4),
+        BatchNorm1d(input_size // 4),
+        ReLU(),
+        Linear(input_size // 4, state_size // 2),
+        BatchNorm1d(state_size // 2),
+        ReLU(),
+        Linear(state_size // 2, state_size),
+    )
+
 class Brain(Module):
 
     def __init__(self, state_size: list):
@@ -75,25 +89,31 @@ class Brain(Module):
         self.discarded_nn = DiscardedModule(self.middle_size)
         self.remaining_nn = DiscardedModule(self.middle_size)
         self.enemy_predict = EnemyNextCard(self.middle_size)
+        self.next_state_predict = NextStatePredict(self.middle_size, state_size[-1])
 
-    def forward(self, state: torch.Tensor, others, predict_enemy=False):
+    def forward(self, state: torch.Tensor, others, predict_enemy=False, predict_next_state=False):
         i_seps = others[:, 0]
         mask_remaining = i_seps < torch.arange(41).to(state.device).unsqueeze(1)
         mask_remaining.t_()
         mask_discarded = ~mask_remaining
         discarded = others * mask_discarded.float()
         remaining = others * mask_remaining.float()
-        output = self.l1(state)
-        output += self.discarded_nn(discarded)
-        output += self.remaining_nn(remaining)
-        if predict_enemy:
-            p_next_enemy_card = self.enemy_predict(output)
-        advantage = self.advantange_nn(output)
-        state_value = self.state_nn(output)
+        middle_repr = self.l1(state)
+        middle_repr += self.discarded_nn(discarded)
+        middle_repr += self.remaining_nn(remaining)
+        advantage = self.advantange_nn(middle_repr)
+        state_value = self.state_nn(middle_repr)
         advantage = advantage - advantage.mean(dim=1, keepdim=True)
         output = state_value + advantage
+        if not predict_enemy and not predict_next_state:
+            return output
+        output = [output]
         if predict_enemy:
-            return output, p_next_enemy_card
+            p_next_enemy_card = self.enemy_predict(middle_repr)
+            output += [p_next_enemy_card]
+        if predict_next_state:
+            next_state_predict = self.next_state_predict(middle_repr)
+            output += [next_state_predict]
         return output
 
 

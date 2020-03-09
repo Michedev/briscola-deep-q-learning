@@ -72,7 +72,7 @@ class QAgent:
         if self.epsilon > random():
             i = randint(0, len(hand_ids)-1)
         else:
-            q_values = self.brain(table, extra).squeeze(0)
+            q_values = self.brain(table, extra, predict_enemy=False, predict_next_state=False).squeeze(0)
             i = torch.argmax(q_values).item()
             self.q_values_log(self.step, q_values, i)
         return i
@@ -115,7 +115,7 @@ class QAgent:
 class SmartPlayer(BasePlayer, QAgent):
 
     def __init__(self):
-        QAgent.__init__(self, [34])
+        QAgent.__init__(self, [40])
         BasePlayer.__init__(self)
 
         self.name = "intelligent_player"
@@ -123,7 +123,8 @@ class SmartPlayer(BasePlayer, QAgent):
         self._init_game_vars()
         self.matches_callbacks = Callbacks(WinRateLog(self.writer, every=10),
                                            WinRateLog(self.writer, every=100),
-                                           IncreaseEpsilonOnLose(self, every=20, increase_perc=0.3))
+                                           IncreaseEpsilonOnLose(self, every=50, increase_perc=0.1,
+                                                                 start_epsilon_increase=0.3))
 
     def _init_game_vars(self):
         self._reward = 0
@@ -134,14 +135,9 @@ class SmartPlayer(BasePlayer, QAgent):
         self.my_card_discarded = []
         self.enemy_discarded = []
         self.id_self_discard = -1
-        self.last_state = []
 
     def choose_card(self) -> int:
-        state = build_state_array(self.get_public_state(), self.hand, self.name)
-        self.last_state = [state, self.my_card_discarded + self.enemy_discarded, [c.id for c in self.hand]]
-        if not self.first_turn:
-            self.get_reward(self.last_state, self._out_of_hand)
-        i = self.decide(self.last_state)
+        i = self.decide(self.build_complete_state())
         if i >= len(self.hand):
             i = randint(0, len(self.hand) - 1)
             self._out_of_hand = True
@@ -153,11 +149,11 @@ class SmartPlayer(BasePlayer, QAgent):
     def notify_game_winner(self, name: str):
         self.reset()
         if name == self.name:
-            self.get_reward(self.last_state, 1.0)
+            self.get_reward(self.build_complete_state(), 1.0)
             for win_logger in self.matches_callbacks.callbacks:
                 win_logger.notify_win()
         else:
-            self.get_reward(self.last_state, -1.0)
+            self.get_reward(self.build_complete_state(), -1.0)
         self.counter += 1
         self.matches_callbacks(self.counter)
         self.writer.add_scalar('epsilon', self.epsilon, self.counter)
@@ -169,7 +165,7 @@ class SmartPlayer(BasePlayer, QAgent):
             self.experience_buffer.put_next_enemy_card_id(card.id)
 
     def notify_turn_winner(self, points: int):
-        self._reward = points / 22.0 / 2.0  # [-0.5, 0.5]
+        reward = points / 22.0 / 2.0  # [-0.5, 0.5]
         if self._out_of_hand:
             self._reward = -0.7
             self._out_of_hand = False
@@ -181,6 +177,13 @@ class SmartPlayer(BasePlayer, QAgent):
             self._on_my_win()
         else:
             self._on_enemy_win()
+        state_discarded = self.build_complete_state()
+        self.get_reward(state_discarded, reward=reward)
+
+    def build_complete_state(self):
+        state = build_state_array(self.get_public_state(), self.hand, self.name)
+        state_discarded = [state, self.my_card_discarded + self.enemy_discarded, [c.id for c in self.hand]]
+        return state_discarded
 
     def _on_my_win(self):
         self.my_card_discarded.append(self.id_enemy_discard)

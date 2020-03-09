@@ -32,6 +32,7 @@ class GameEngine:
         self.deck = Deck()
         self.turn = 0
         self.briscola = self.deck.draw()
+        self.deck.cards.append(self.briscola)
         self.discarded = []
         self.__logger.info(f'Briscola is {self.briscola}')
         for player in self.players:
