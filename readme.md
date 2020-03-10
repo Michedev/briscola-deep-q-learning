@@ -6,6 +6,12 @@ Standard Deep-q-learning was around 50% win rate until the last episode,
  further tunings have been applied to the standard deep-q-learning training in two ways:
  - Enhancements to the training algorithm in order to improve performance and speed of convergence
  - Set up multiple tasks to the deep-q-nn in order to learn more general and useful features
+ 
+## Briscola match
+
+If you don't know what is Briscola you can find some info [here](https://en.wikipedia.org/wiki/Briscola)
+
+This Briscola game implementation contains an "early stop" condition since when a player reaches more than 60 points, the other one has automatically lose because it can't get more than 60 points (total of all card points is 120) 
      
 ### State Representation
  How to represent the current state 
