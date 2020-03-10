@@ -46,7 +46,7 @@ class QAgent:
         self.episode = 0
         self.step_episode = 0
         self.mse = torch.nn.MSELoss('mean')
-        self.writer = SummaryWriter('briscola_logs')
+        self.writer = SummaryWriter('briscola_tb_logs')
         self.epsilon = 1.0
         self._curiosity_values = None
         self.same_counter = 0
