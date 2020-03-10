@@ -4,7 +4,7 @@
 Standard Deep-q-learning was around 50% win rate until the last episode,
  basically like a random player. In order to converge to an acceptable result, 
  further tunings have been applied to the standard deep-q-learning training in two ways:
- - Alterations at the training algorithm in order to improve convergence and speed
+ - Enhancements to the training algorithm in order to improve performance and speed of convergence
  - Set up multiple tasks to the deep-q-nn in order to learn more general and useful features
      
 ### State Representation
