@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Final
 
 import numpy as np
 import torch
@@ -6,10 +6,13 @@ import torch
 from card import Card
 from seed import Seed
 from game_rules import values_points, select_winner
+from state import PublicState
+
+STATE_SIZE: Final = 40
 
 
 def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
-    x = np.zeros((40,)) -1
+    x = np.zeros((STATE_SIZE,)) -1
     for i, c in enumerate(hand):
         range_i = slice(i * 6, (i + 1) * 6)
         x[range_i] = encode_card(c)
@@ -29,7 +32,6 @@ def build_state_array(public_state, hand: List[Card], pname: str) -> np.ndarray:
     offset = 33
     x[offset] = public_state.turn / 23.0
     return x
-
 
 
 def build_x_discarded(state: 'PublicState', hand: List[Card]):

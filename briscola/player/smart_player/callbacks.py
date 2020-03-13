@@ -117,7 +117,7 @@ class TrainStep(Callback):
 
     def calc_q_loss(self, exp_rew_t, sars):
         exp_rew_t = exp_rew_t.gather(1, sars.a_t.long().unsqueeze(-1))
-        is_finished_episode = ((torch.ne(sars.r_t, 1.0) & torch.ne(sars.r_t1, 1.0)) & torch.ne(sars.r_t2, 1.0))
+        is_finished_episode = (1 - sars.done)
         is_finished_episode = is_finished_episode.float().unsqueeze(-1)
         exp_rew_t3 = is_finished_episode * self.target_network(sars.s_t1, sars.d_t1)
         exp_rew_t3 = torch.max(exp_rew_t3, dim=1)
